@@ -1,0 +1,19 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Node.js
+node_modules/
+.next/
+out/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db

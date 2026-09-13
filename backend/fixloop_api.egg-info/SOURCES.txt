@@ -1,0 +1,13 @@
+pyproject.toml
+app/__init__.py
+app/config.py
+app/main.py
+app/schemas.py
+app/services/__init__.py
+app/services/ai.py
+fixloop_api.egg-info/PKG-INFO
+fixloop_api.egg-info/SOURCES.txt
+fixloop_api.egg-info/dependency_links.txt
+fixloop_api.egg-info/requires.txt
+fixloop_api.egg-info/top_level.txt
+tests/test_ai_endpoints.py
