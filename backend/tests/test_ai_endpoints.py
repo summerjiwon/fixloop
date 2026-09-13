@@ -86,6 +86,18 @@ def test_report_to_resolution_flow_requires_explicit_verification_and_approval()
     assert resolved.json()["status"] == "RESOLVED"
 
 
+def test_qr_report_endpoint_automatically_creates_issue_after_analysis() -> None:
+    response = client.post(
+        "/api/reports",
+        data={"location_id": "00000000-0000-0000-0000-000000000001", "reporter_text": "QR 자동 등록"},
+        files={"image": ("before.jpg", b"fake-before-image", "image/jpeg")},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "OPEN"
+    assert response.json()["title"]
+
+
 def test_insights_use_api_aggregates() -> None:
     response = client.get("/api/insights")
 

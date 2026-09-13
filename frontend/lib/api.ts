@@ -61,6 +61,14 @@ export async function analyzeReport(locationId: string, image: File, reporterTex
   return request<{ draft_id: string; analysis: Analysis }>("/api/reports/analyze", { method: "POST", body: form });
 }
 
+export async function submitReport(locationId: string, image: File, reporterText: string) {
+  const form = new FormData();
+  form.set("location_id", locationId);
+  form.set("reporter_text", reporterText);
+  form.set("image", image);
+  return request<Issue>("/api/reports", { method: "POST", body: form });
+}
+
 export const confirmReport = (draftId: string) => request<Issue>(`/api/reports/${draftId}/confirm`, { method: "POST" });
 export const listIssues = (status?: IssueStatus) => request<Issue[]>(`/api/issues${status ? `?status_filter=${status}` : ""}`);
 export const getIssue = (id: string) => request<Issue>(`/api/issues/${id}`);

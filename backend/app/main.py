@@ -125,6 +125,19 @@ async def confirm_report(
         raise translate_domain_error(error) from error
 
 
+@app.post("/api/reports", response_model=IssueDetail, status_code=status.HTTP_201_CREATED)
+async def submit_report(
+    location_id: UUID = Form(...),
+    reporter_text: str | None = Form(default=None),
+    image: UploadFile = File(...),
+    local_store: InMemoryStore = Depends(get_store),
+    provider: VisionProvider = Depends(vision_provider),
+) -> IssueDetail:
+    """Public QR flow: analyze, validate, and create the issue in one reporter action."""
+    analysis = await analyze_report(location_id, reporter_text, image, local_store, provider)
+    return await confirm_report(analysis.draft_id, local_store)
+
+
 @app.get("/api/issues", response_model=list[IssueListItem])
 async def list_issues(
     status_filter: IssueStatus | None = None,
