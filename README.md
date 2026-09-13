@@ -35,10 +35,11 @@ The default `memory` backend makes the flow runnable without credentials. `supab
 
 ## Production handoff
 
-- Railway deploys the FastAPI container from `backend/Dockerfile`; configure its root directory as the repository root and set `AI_PROVIDER`, `AI_API_KEY`, `ALLOWED_ORIGINS`, and Supabase server values there.
+- Follow [DEPLOYMENT.md](DEPLOYMENT.md) to connect Supabase PostgreSQL/private Storage, Gemini, and public URLs. The repository now includes both the Supabase persistence adapter and the Gemini vision adapter; only the account secrets and deployment targets are external prerequisites.
+- Railway deploys the FastAPI container from `backend/Dockerfile`; configure its root directory as the repository root and set `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, `ALLOWED_ORIGINS`, `DATA_BACKEND=supabase`, `STORAGE_BACKEND=supabase`, and Supabase server values there.
 - Vercel deploys `frontend/`; set `NEXT_PUBLIC_API_BASE_URL` to the Railway URL and the two public Supabase values in Vercel.
 - Run `supabase/schema.sql` and then `supabase/seed.sql` in the Supabase SQL editor. Keep the Storage bucket private.
-- Set `AI_PROVIDER=openai` only after adding an OpenAI API key to Railway. The backend uses the Responses API with image inputs and JSON-schema structured outputs, while `store=false` avoids retaining model responses.
+- Set `AI_PROVIDER=gemini` only after adding a Gemini API key to the backend host. The backend sends images to Gemini from the server and validates its structured output before creating an issue.
 
 ## Product rules enforced in the current flow
 

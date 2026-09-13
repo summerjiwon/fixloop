@@ -1,6 +1,8 @@
 import asyncio
 from typing import Protocol
 
+import httpx
+
 from app.config import get_settings
 from app.schemas import ProofOfFixResult, TriageRequest, VisualTriageResult, VerifyRequest
 
@@ -86,6 +88,55 @@ class OpenAIResponsesVisionProvider:
         )
         return ProofOfFixResult.model_validate_json(response.output_text)
 
+
+class GeminiVisionProvider:
+    """Gemini adapter using image bytes and Pydantic-backed JSON output."""
+
+    def __init__(self, api_key: str, model: str) -> None:
+        from google import genai
+        from google.genai import types
+
+        self.client = genai.Client(api_key=api_key)
+        self.types = types
+        self.model = model
+
+    async def triage(self, request: TriageRequest) -> VisualTriageResult:
+        return await asyncio.to_thread(
+            self._generate,
+            VisualTriageResult,
+            "You are a facilities incident analyst. Analyze only visually observable facts. "
+            "Do not claim a fact that the photo cannot support. "
+            f"Location: {request.location_context}. Reporter note: {request.reporter_text or 'None'}.",
+            [str(request.before_image_url)],
+        )
+
+    async def verify(self, request: VerifyRequest) -> ProofOfFixResult:
+        return await asyncio.to_thread(
+            self._generate,
+            ProofOfFixResult,
+            "Compare the Before and After facility photos. Estimate only visible evidence; "
+            "do not assert actual repair quality or functional safety. "
+            f"Issue context: {request.issue_context}.",
+            [str(request.before_image_url), str(request.after_image_url)],
+        )
+
+    def _generate(self, schema: type[VisualTriageResult] | type[ProofOfFixResult], prompt: str, image_urls: list[str]):
+        parts = [prompt]
+        with httpx.Client(timeout=30, follow_redirects=True) as http:
+            for image_url in image_urls:
+                response = http.get(image_url)
+                response.raise_for_status()
+                mime_type = response.headers.get("content-type", "image/jpeg").split(";", 1)[0]
+                parts.append(self.types.Part.from_bytes(data=response.content, mime_type=mime_type))
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=parts,
+            config=self.types.GenerateContentConfig(
+                response_mime_type="application/json", response_schema=schema
+            ),
+        )
+        return schema.model_validate_json(response.text)
+
 def get_vision_provider() -> VisionProvider:
     settings = get_settings()
     if settings.ai_provider == "mock":
@@ -94,6 +145,10 @@ def get_vision_provider() -> VisionProvider:
         if not settings.ai_api_key:
             raise RuntimeError("AI_API_KEY is required when AI_PROVIDER=openai")
         return OpenAIResponsesVisionProvider(settings.ai_api_key, settings.openai_model)
+    if settings.ai_provider == "gemini":
+        if not settings.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY is required when AI_PROVIDER=gemini")
+        return GeminiVisionProvider(settings.gemini_api_key, settings.gemini_model)
     raise RuntimeError(
         f"Unsupported AI_PROVIDER={settings.ai_provider!r}. Add its SDK adapter behind VisionProvider."
     )

@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
+from functools import lru_cache
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database.storage import MemoryStorage, draft_before_path, issue_after_path
+from app.database.storage import MemoryStorage, SupabaseStorage, draft_before_path, issue_after_path
 from app.database.store import InMemoryStore, InvalidStateError, NotFoundError
+from app.database.supabase_store import SupabaseStore
 from app.schemas import (
     InsightsResponse,
     IssueDetail,
@@ -32,8 +34,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-store = InMemoryStore()
-storage = MemoryStorage()
+memory_store = InMemoryStore()
+memory_storage = MemoryStorage()
 
 
 def vision_provider() -> VisionProvider:
@@ -43,13 +45,43 @@ def vision_provider() -> VisionProvider:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
-def get_store() -> InMemoryStore:
-    if get_settings().data_backend != "memory":
-        raise HTTPException(
-            status_code=503,
-            detail="Supabase persistence is not configured. Set DATA_BACKEND=memory for local development.",
-        )
-    return store
+@lru_cache
+def get_supabase_services() -> tuple[SupabaseStore, SupabaseStorage]:
+    settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for Supabase mode")
+    from supabase import create_client
+
+    client = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    supabase_storage = SupabaseStorage(client, settings.storage_bucket)
+    return SupabaseStore(client, supabase_storage.signed_url), supabase_storage
+
+
+def get_store() -> InMemoryStore | SupabaseStore:
+    settings = get_settings()
+    if settings.data_backend == "memory":
+        return memory_store
+    if settings.data_backend == "supabase":
+        try:
+            return get_supabase_services()[0]
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+    raise HTTPException(status_code=503, detail="DATA_BACKEND must be memory or supabase")
+
+
+def get_storage() -> MemoryStorage | SupabaseStorage:
+    settings = get_settings()
+    if settings.storage_backend == "memory" and settings.data_backend == "memory":
+        return memory_storage
+    if settings.storage_backend == "supabase" and settings.data_backend == "supabase":
+        try:
+            return get_supabase_services()[1]
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+    raise HTTPException(
+        status_code=503,
+        detail="Use STORAGE_BACKEND=supabase together with DATA_BACKEND=supabase in production",
+    )
 
 
 def require_image(file: UploadFile) -> None:
@@ -91,7 +123,8 @@ async def analyze_report(
     location_id: UUID = Form(...),
     reporter_text: str | None = Form(default=None),
     image: UploadFile = File(...),
-    local_store: InMemoryStore = Depends(get_store),
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    local_storage: MemoryStorage | SupabaseStorage = Depends(get_storage),
     provider: VisionProvider = Depends(vision_provider),
 ) -> ReportAnalysisResponse:
     """Stage a Before image and analysis until the reporter explicitly confirms the issue."""
@@ -99,17 +132,17 @@ async def analyze_report(
     draft_id = uuid4()
     try:
         file_bytes = await image.read()
-        image_url = storage.upload(
+        image_path = local_storage.upload(
             draft_before_path(draft_id), image.filename or "before.jpg", image.content_type, file_bytes
         )
         analysis = await provider.triage(
             TriageRequest(
-                before_image_url=image_url,
+                before_image_url=local_storage.signed_url(image_path),
                 location_context=f"location:{location_id}",
                 reporter_text=reporter_text,
             )
         )
-        local_store.create_draft(location_id, image_url, reporter_text, analysis, draft_id)
+        local_store.create_draft(location_id, image_path, reporter_text, analysis, draft_id)
     except (NotFoundError, ValueError) as error:
         raise translate_domain_error(error) from error
     return ReportAnalysisResponse(draft_id=draft_id, analysis=analysis)
@@ -117,7 +150,7 @@ async def analyze_report(
 
 @app.post("/api/reports/{draft_id}/confirm", response_model=IssueDetail, status_code=status.HTTP_201_CREATED)
 async def confirm_report(
-    draft_id: UUID, local_store: InMemoryStore = Depends(get_store)
+    draft_id: UUID, local_store: InMemoryStore | SupabaseStore = Depends(get_store)
 ) -> IssueDetail:
     try:
         return local_store.confirm_draft(draft_id)
@@ -130,11 +163,12 @@ async def submit_report(
     location_id: UUID = Form(...),
     reporter_text: str | None = Form(default=None),
     image: UploadFile = File(...),
-    local_store: InMemoryStore = Depends(get_store),
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    local_storage: MemoryStorage | SupabaseStorage = Depends(get_storage),
     provider: VisionProvider = Depends(vision_provider),
 ) -> IssueDetail:
     """Public QR flow: analyze, validate, and create the issue in one reporter action."""
-    analysis = await analyze_report(location_id, reporter_text, image, local_store, provider)
+    analysis = await analyze_report(location_id, reporter_text, image, local_store, local_storage, provider)
     return await confirm_report(analysis.draft_id, local_store)
 
 
@@ -142,13 +176,13 @@ async def submit_report(
 async def list_issues(
     status_filter: IssueStatus | None = None,
     severity: str | None = None,
-    local_store: InMemoryStore = Depends(get_store),
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
 ) -> list[IssueListItem]:
     return local_store.list_issues(status_filter, severity)
 
 
 @app.get("/api/issues/{issue_id}", response_model=IssueDetail)
-async def get_issue(issue_id: UUID, local_store: InMemoryStore = Depends(get_store)) -> IssueDetail:
+async def get_issue(issue_id: UUID, local_store: InMemoryStore | SupabaseStore = Depends(get_store)) -> IssueDetail:
     try:
         return local_store.get_issue(issue_id)
     except Exception as error:
@@ -159,7 +193,7 @@ async def get_issue(issue_id: UUID, local_store: InMemoryStore = Depends(get_sto
 async def update_issue_status(
     issue_id: UUID,
     request: StatusUpdateRequest,
-    local_store: InMemoryStore = Depends(get_store),
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
 ) -> IssueDetail:
     try:
         return local_store.update_status(issue_id, request.status)
@@ -171,12 +205,13 @@ async def update_issue_status(
 async def upload_after_image(
     issue_id: UUID,
     image: UploadFile = File(...),
-    local_store: InMemoryStore = Depends(get_store),
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    local_storage: MemoryStorage | SupabaseStorage = Depends(get_storage),
 ) -> IssueDetail:
     require_image(image)
     try:
         file_bytes = await image.read()
-        image_url = storage.upload(
+        image_url = local_storage.upload(
             issue_after_path(issue_id), image.filename or "after.jpg", image.content_type, file_bytes
         )
         return local_store.add_after_image(issue_id, image_url)
@@ -187,7 +222,7 @@ async def upload_after_image(
 @app.post("/api/issues/{issue_id}/verify", response_model=IssueDetail)
 async def verify_issue(
     issue_id: UUID,
-    local_store: InMemoryStore = Depends(get_store),
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
     provider: VisionProvider = Depends(vision_provider),
 ) -> IssueDetail:
     try:
@@ -206,7 +241,7 @@ async def verify_issue(
 
 
 @app.post("/api/issues/{issue_id}/resolve", response_model=IssueDetail)
-async def resolve_issue(issue_id: UUID, local_store: InMemoryStore = Depends(get_store)) -> IssueDetail:
+async def resolve_issue(issue_id: UUID, local_store: InMemoryStore | SupabaseStore = Depends(get_store)) -> IssueDetail:
     """The only route allowed to put an issue into RESOLVED."""
     try:
         return local_store.resolve(issue_id)
@@ -215,5 +250,5 @@ async def resolve_issue(issue_id: UUID, local_store: InMemoryStore = Depends(get
 
 
 @app.get("/api/insights", response_model=InsightsResponse)
-async def get_insights(local_store: InMemoryStore = Depends(get_store)) -> InsightsResponse:
+async def get_insights(local_store: InMemoryStore | SupabaseStore = Depends(get_store)) -> InsightsResponse:
     return local_store.get_insights()
