@@ -22,11 +22,14 @@ export function ReportForm({ locationId }: { locationId: string }) {
   if (issue) return <section className="rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-xl font-bold">등록되었습니다</h2><p className="mt-2 text-slate-600">AI가 사진을 분석해 운영팀에 이슈를 등록했습니다. 운영자가 확인 후 처리합니다.</p><p className="mt-4 text-sm text-slate-500">접수 번호: {issue.id.slice(0, 8).toUpperCase()}</p></section>;
 
   return <section className="rounded-2xl bg-white p-6 shadow-sm">
-    <label className="block text-sm font-semibold">현장 사진</label>
-    <input className="mt-2 block w-full rounded-lg border p-3" type="file" accept="image/*" capture="environment" onChange={(event) => setImage(event.target.files?.[0] ?? null)} />
-    <label className="mt-5 block text-sm font-semibold">설명 <span className="font-normal text-slate-500">(선택)</span></label>
-    <textarea className="mt-2 min-h-24 w-full rounded-lg border p-3" value={text} onChange={(event) => setText(event.target.value)} placeholder="무엇이 문제인지 짧게 적어주세요." />
-    <button className="mt-5 w-full rounded-lg bg-brand px-4 py-3 font-semibold text-white disabled:opacity-50" disabled={busy} onClick={submit}>{busy ? "AI가 사진을 분석하고 등록하고 있습니다…" : "사진 신고 등록"}</button>
+    <label className="block text-sm font-semibold" htmlFor="report-image">갤러리에서 사진 선택</label>
+    <p className="mt-1 text-sm text-slate-500">사진 한 장만 선택하면 바로 등록할 수 있습니다.</p>
+    <input id="report-image" className="mt-2 block w-full rounded-lg border p-3" type="file" accept="image/*" onChange={(event) => setImage(event.target.files?.[0] ?? null)} />
+    <details className="mt-5 rounded-lg border p-3">
+      <summary className="cursor-pointer text-sm font-semibold">설명 추가 <span className="font-normal text-slate-500">(선택)</span></summary>
+      <textarea className="mt-3 min-h-24 w-full rounded-lg border p-3" value={text} onChange={(event) => setText(event.target.value)} placeholder="입력하지 않아도 됩니다." />
+    </details>
+    <button className="mt-5 w-full rounded-lg bg-brand px-4 py-3 font-semibold text-white disabled:opacity-50" disabled={busy} onClick={submit}>{busy ? "AI가 사진을 분석하고 등록하고 있습니다…" : "사진만으로 신고 등록"}</button>
     {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
   </section>;
 }
