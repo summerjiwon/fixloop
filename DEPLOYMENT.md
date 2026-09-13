@@ -32,11 +32,11 @@ Deploy `backend/` with the included Dockerfile to a server such as Railway. Depl
 ```dotenv
 NEXT_PUBLIC_API_BASE_URL=https://api.example.com
 NEXT_PUBLIC_REPORT_BASE_URL=https://app.example.com
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=replace-with-the-public-anon-key
 ```
 
 `NEXT_PUBLIC_REPORT_BASE_URL` is the only value that determines the QR destination. Redeploy the frontend after changing it; the dashboard then renders a QR code containing the public report URL.
+
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are not required for the current reporter/dashboard flow. Reserve them for a later browser-side Supabase Auth implementation; the current application accesses Supabase only through the protected FastAPI server.
 
 ## 4. Verify before using the QR in the field
 

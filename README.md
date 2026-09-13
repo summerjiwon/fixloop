@@ -31,7 +31,7 @@ The mock provider is deliberately deterministic and is for contract testing only
 - `GET /api/issues`, `GET /api/issues/{id}`, `PATCH /api/issues/{id}/status`
 - `POST /api/issues/{id}/after`, `POST /api/issues/{id}/verify`, `POST /api/issues/{id}/resolve`
 
-The default `memory` backend makes the flow runnable without credentials. `supabase/schema.sql` defines the production PostgreSQL, private Storage, and pgvector layout, including the same-location similarity RPC. Apply it in the Supabase SQL editor, create an email/password admin user, and set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` before deploying.
+The default `memory` backend makes the flow runnable without credentials. `supabase/schema.sql` defines the production PostgreSQL, private Storage, and pgvector layout, including the same-location similarity RPC. Apply it in the Supabase SQL editor and set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` on the backend before deploying. The public Supabase values are reserved for a future browser-side administrator-auth feature and are not needed for the current flow.
 
 ## Production handoff
 
