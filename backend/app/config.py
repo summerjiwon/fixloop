@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     ai_api_key: str | None = None
     allowed_origins: str = "http://localhost:3000"
+    data_backend: str = "memory"
+    storage_backend: str = "memory"
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
+    storage_bucket: str = "issue-images"
 
     @property
     def cors_origins(self) -> list[str]:

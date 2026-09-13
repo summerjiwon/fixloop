@@ -1,9 +1,13 @@
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
 
 Severity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+IssueStatus = Literal["OPEN", "IN_PROGRESS", "VERIFYING", "RESOLVED"]
+ImageType = Literal["BEFORE", "AFTER"]
 
 
 class VisualTriageResult(BaseModel):
@@ -41,3 +45,71 @@ class VerifyRequest(BaseModel):
     before_image_url: HttpUrl
     after_image_url: HttpUrl
     issue_context: str = Field(min_length=1, max_length=1000)
+
+
+class ReportAnalysisResponse(BaseModel):
+    draft_id: UUID
+    analysis: VisualTriageResult
+
+
+class IssueImage(BaseModel):
+    id: UUID
+    image_url: str
+    type: ImageType
+    created_at: datetime
+
+
+class SimilarIssue(BaseModel):
+    issue_id: UUID
+    title: str
+    severity: Severity
+    status: IssueStatus
+    similarity: float = Field(ge=0, le=1)
+
+
+class IssueVerification(BaseModel):
+    same_asset: bool
+    visible_issue_resolved: bool
+    confidence: float = Field(ge=0, le=1)
+    reason: str
+    limitations: list[str]
+    created_at: datetime
+
+
+class IssueListItem(BaseModel):
+    id: UUID
+    location_id: UUID
+    title: str
+    description: str
+    category: str
+    asset_name: str
+    severity: Severity
+    status: IssueStatus
+    ai_confidence: float = Field(ge=0, le=1)
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+
+class IssueDetail(IssueListItem):
+    images: list[IssueImage]
+    similar_issues: list[SimilarIssue]
+    verification: IssueVerification | None = None
+
+
+class StatusUpdateRequest(BaseModel):
+    status: IssueStatus
+
+
+class InsightItem(BaseModel):
+    kind: Literal["repeat_issue", "location_concentration", "recommendation"]
+    title: str
+    detail: str
+    metric: str
+
+
+class InsightsResponse(BaseModel):
+    period_days: int
+    total_issues: int
+    by_location: dict[str, int]
+    by_category: dict[str, int]
+    insights: list[InsightItem]
