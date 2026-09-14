@@ -74,6 +74,7 @@ class InMemoryStore:
         issue = IssueListItem(
             id=issue_id,
             location_id=draft.location_id,
+            area=draft.analysis.area,
             title=draft.analysis.title,
             description=draft.analysis.description,
             category=draft.analysis.issue_type,
@@ -81,6 +82,7 @@ class InMemoryStore:
             severity=draft.analysis.severity,
             status="OPEN",
             ai_confidence=draft.analysis.confidence,
+            operator_comment=draft.analysis.operator_comment,
             created_at=now,
         )
         self.issues[issue_id] = issue
@@ -91,12 +93,12 @@ class InMemoryStore:
         return self.get_issue(issue_id)
 
     def _find_similar(self, target: IssueListItem) -> list[SimilarIssue]:
-        target_terms = set(f"{target.asset_name} {target.category} {target.title}".lower().split())
+        target_terms = set(f"{target.area} {target.asset_name} {target.category} {target.title}".lower().split())
         candidates: list[SimilarIssue] = []
         for issue in self.issues.values():
             if issue.id == target.id:
                 continue
-            terms = set(f"{issue.asset_name} {issue.category} {issue.title}".lower().split())
+            terms = set(f"{issue.area} {issue.asset_name} {issue.category} {issue.title}".lower().split())
             overlap = len(target_terms & terms)
             similarity = overlap / max(len(target_terms | terms), 1)
             if issue.location_id == target.location_id:

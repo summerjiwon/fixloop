@@ -7,6 +7,16 @@ from app.config import get_settings
 from app.schemas import ProofOfFixResult, TriageRequest, VisualTriageResult, VerifyRequest
 
 
+TRIAGE_POLICY = """
+당신은 시설 운영 신고를 분류하는 AI입니다. 사진에서 실제로 보이는 사실만 판단하고, 모든 텍스트 값은 한국어로 작성하세요.
+
+공간(area)은 화장실, 도서관, 출입구, 복도, 계단, 휴게공간, 강의실, 사무실, 주차장, 미분류 공간 중 사진과 문맥에 가장 맞는 하나를 사용하세요. 같은 공간은 같은 이름으로 일관되게 분류하세요.
+문제 분류(issue_type)는 소모품 부족, 시설 파손, 유리·창호, 배관·누수, 청결, 안전, 설비 고장, 기타 중 하나를 사용하세요.
+심각도 기준: LOW(낮음)=화장실 휴지 없음 같은 소모품 부족 또는 경미한 청결 문제, MEDIUM(중간)=문 경첩 고장처럼 운영에 영향을 주지만 즉시 위험하지 않은 문제, HIGH(높음)=유리 파손처럼 다칠 위험이 있는 문제, CRITICAL(긴급)=파이프 파손·큰 누수·화재·감전 위험처럼 즉시 조치가 필요한 문제입니다.
+operator_comment에는 관리자가 바로 이해할 수 있도록 확인 대상과 다음 조치를 한두 문장으로 적으세요. 사진으로 원인, 안전성, 수리 완료를 단정하지 말고 불확실하면 현장 확인을 요청하세요.
+""".strip()
+
+
 class VisionProvider(Protocol):
     """Provider boundary. Concrete SDK calls must stay behind this interface."""
 
@@ -20,14 +30,23 @@ class MockVisionProvider:
 
     async def triage(self, request: TriageRequest) -> VisualTriageResult:
         context = f"{request.location_context} {request.reporter_text or ''}".lower()
-        severity = "HIGH" if any(word in context for word in ("위험", "화재", "누수")) else "MEDIUM"
+        if any(word in context for word in ("파이프", "큰 누수", "화재", "감전")):
+            severity = "CRITICAL"
+        elif any(word in context for word in ("유리", "파손")):
+            severity = "HIGH"
+        elif "경첩" in context:
+            severity = "MEDIUM"
+        else:
+            severity = "LOW" if "휴지" in context else "MEDIUM"
         return VisualTriageResult(
+            area=next((area for area in ("화장실", "도서관", "출입구", "복도", "계단", "휴게공간") if area in context), "미분류 공간"),
             asset="unknown_asset",
-            issue_type="needs_manual_review",
+            issue_type="시설 확인 필요",
             title="현장 사진 확인 필요",
-            description="Mock provider result. Configure a production vision provider before deployment.",
+            description="사진을 기반으로 운영팀의 현장 확인이 필요합니다.",
             severity=severity,
             confidence=0.5,
+            operator_comment="사진과 현장 상태를 확인한 뒤 담당자에게 조치를 배정하세요.",
         )
 
     async def verify(self, request: VerifyRequest) -> ProofOfFixResult:
@@ -56,10 +75,7 @@ class OpenAIResponsesVisionProvider:
         response = self.client.responses.create(
             model=self.model,
             store=False,
-            instructions=(
-                "You are a facilities incident analyst. Analyze only what is visually observable. "
-                "Return the requested JSON schema; never claim a fact that the image cannot support."
-            ),
+            instructions=TRIAGE_POLICY,
             input=[{"role": "user", "content": [
                 {"type": "input_text", "text": f"Location: {request.location_context}\nReporter note: {request.reporter_text or 'None'}"},
                 {"type": "input_image", "image_url": str(request.before_image_url), "detail": "high"},
@@ -104,9 +120,8 @@ class GeminiVisionProvider:
         return await asyncio.to_thread(
             self._generate,
             VisualTriageResult,
-            "You are a facilities incident analyst. Analyze only visually observable facts. "
-            "Do not claim a fact that the photo cannot support. "
-            f"Location: {request.location_context}. Reporter note: {request.reporter_text or 'None'}.",
+            f"{TRIAGE_POLICY}\n\n신고 위치 문맥: {request.location_context}\n"
+            f"신고자 설명: {request.reporter_text or '없음'}",
             [str(request.before_image_url)],
         )
 

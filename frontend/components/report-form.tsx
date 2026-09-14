@@ -19,7 +19,7 @@ export function ReportForm({ locationId }: { locationId: string }) {
     finally { setBusy(false); }
   }
 
-  if (issue) return <section className="rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-xl font-bold">등록되었습니다</h2><p className="mt-2 text-slate-600">AI가 사진을 분석해 운영팀에 이슈를 등록했습니다. 운영자가 확인 후 처리합니다.</p><p className="mt-4 text-sm text-slate-500">접수 번호: {issue.id.slice(0, 8).toUpperCase()}</p></section>;
+  if (issue) return <section className="rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-xl font-bold">등록되었습니다. 감사합니다.</h2><p className="mt-2 text-slate-600">빠른 조치를 취하도록 하겠습니다.</p><p className="mt-4 text-sm text-slate-500">접수 번호: {issue.id.slice(0, 8).toUpperCase()}</p></section>;
 
   return <section className="rounded-2xl bg-white p-6 shadow-sm">
     <label className="block text-sm font-semibold" htmlFor="report-image">갤러리에서 사진 선택</label>

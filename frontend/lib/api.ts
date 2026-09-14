@@ -13,6 +13,7 @@ export type Analysis = {
 export type Issue = {
   id: string;
   location_id: string;
+  area: string;
   title: string;
   description: string;
   category: string;
@@ -20,6 +21,7 @@ export type Issue = {
   severity: Severity;
   status: IssueStatus;
   ai_confidence: number;
+  operator_comment: string;
   created_at: string;
   resolved_at?: string | null;
   images?: { id: string; image_url: string; type: "BEFORE" | "AFTER"; created_at: string }[];

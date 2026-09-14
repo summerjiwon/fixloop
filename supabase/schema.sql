@@ -29,6 +29,7 @@ create table if not exists public.report_drafts (
 create table if not exists public.issues (
   id uuid primary key default gen_random_uuid(),
   location_id uuid not null references public.locations(id),
+  area text not null default '미분류 공간',
   asset_id uuid references public.assets(id),
   title text not null,
   description text not null,
@@ -37,10 +38,15 @@ create table if not exists public.issues (
   severity text not null check (severity in ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
   status text not null default 'OPEN' check (status in ('OPEN', 'IN_PROGRESS', 'VERIFYING', 'RESOLVED')),
   ai_confidence real not null check (ai_confidence between 0 and 1),
+  operator_comment text not null default '관리자 확인 필요',
   embedding vector(1536),
   created_at timestamptz not null default now(),
   resolved_at timestamptz
 );
+
+-- Safe to rerun when upgrading an existing Day 2 database.
+alter table public.issues add column if not exists area text not null default '미분류 공간';
+alter table public.issues add column if not exists operator_comment text not null default '관리자 확인 필요';
 
 create table if not exists public.issue_images (
   id uuid primary key default gen_random_uuid(),

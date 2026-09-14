@@ -13,12 +13,14 @@ ImageType = Literal["BEFORE", "AFTER"]
 class VisualTriageResult(BaseModel):
     """Validated, display-safe result of analysing a reporter's Before photo."""
 
+    area: str = Field(min_length=1, max_length=80, description="공간 분류. 예: 화장실, 도서관, 출입구")
     asset: str = Field(min_length=1, max_length=120)
-    issue_type: str = Field(min_length=1, max_length=120)
+    issue_type: str = Field(min_length=1, max_length=120, description="한국어 문제 분류")
     title: str = Field(min_length=1, max_length=160)
     description: str = Field(min_length=1, max_length=1000)
     severity: Severity
     confidence: float = Field(ge=0, le=1)
+    operator_comment: str = Field(min_length=1, max_length=500, description="관리자용 한국어 조치 코멘트")
 
 
 class ProofOfFixResult(BaseModel):
@@ -79,6 +81,7 @@ class IssueVerification(BaseModel):
 class IssueListItem(BaseModel):
     id: UUID
     location_id: UUID
+    area: str
     title: str
     description: str
     category: str
@@ -86,6 +89,7 @@ class IssueListItem(BaseModel):
     severity: Severity
     status: IssueStatus
     ai_confidence: float = Field(ge=0, le=1)
+    operator_comment: str
     created_at: datetime
     resolved_at: datetime | None = None
 

@@ -85,6 +85,7 @@ class SupabaseStore:
             {
                 "id": str(issue_id),
                 "location_id": draft["location_id"],
+                "area": analysis.area,
                 "title": analysis.title,
                 "description": analysis.description,
                 "category": analysis.issue_type,
@@ -92,6 +93,7 @@ class SupabaseStore:
                 "severity": analysis.severity,
                 "status": "OPEN",
                 "ai_confidence": analysis.confidence,
+                "operator_comment": analysis.operator_comment,
             }
         ).execute()
         self.client.table("issue_images").insert(
