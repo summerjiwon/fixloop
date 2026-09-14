@@ -7,13 +7,21 @@ from uuid import UUID, uuid4
 class MemoryStorage:
     """Deterministic local storage address generator used before Supabase is configured."""
 
+    def __init__(self) -> None:
+        self.files: dict[str, tuple[bytes, str]] = {}
+
     def upload(self, path: str, filename: str, content_type: str, content: bytes) -> str:
         if not content:
             raise ValueError("Image file is empty")
-        return f"https://storage.local/{path}/{filename}"
+        image_id = uuid4().hex
+        self.files[image_id] = (content, content_type)
+        return f"http://127.0.0.1:8000/api/local-images/{image_id}"
 
     def signed_url(self, path: str) -> str:
         return path
+
+    def read(self, image_id: str) -> tuple[bytes, str] | None:
+        return self.files.get(image_id)
 
 
 class SupabaseStorage:

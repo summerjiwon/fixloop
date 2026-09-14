@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
@@ -100,6 +100,16 @@ def translate_domain_error(error: Exception) -> HTTPException:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/local-images/{image_id}")
+async def get_local_image(image_id: str) -> Response:
+    """Serve a temporary local-memory upload to the local dashboard and a vision provider."""
+    image = memory_storage.read(image_id) if get_settings().storage_backend == "memory" else None
+    if not image:
+        raise HTTPException(status_code=404, detail="Local image not found")
+    content, content_type = image
+    return Response(content=content, media_type=content_type)
 
 
 @app.post("/api/ai/triage", response_model=VisualTriageResult)

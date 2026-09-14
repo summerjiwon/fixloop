@@ -16,7 +16,7 @@ Create a Gemini API key in Google AI Studio. Add it only to the backend host's s
 ```dotenv
 AI_PROVIDER=gemini
 GEMINI_API_KEY=replace-with-a-server-secret
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 DATA_BACKEND=supabase
 STORAGE_BACKEND=supabase
 SUPABASE_URL=https://your-project.supabase.co
