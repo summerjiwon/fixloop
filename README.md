@@ -20,6 +20,16 @@ supabase/  Supabase migrations and storage setup (Day 2)
 
 The mock provider is deliberately deterministic and is for contract testing only. A real provider adapter must validate its output with `VisualTriageResult` or `ProofOfFixResult`; browser code must never receive an AI API key.
 
+## Docker setup
+
+Docker Compose is the recommended way to run the same local environment on another computer without installing Python, Node.js, or a project virtual environment. Copy `docker.env.example` to `.env` in the repository root, then run:
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:3000/dashboard`. The default is a no-cost mock/memory demonstration. To use Gemini and Supabase, fill only the matching values in the root `.env`; Docker passes secrets to the API container and never to the browser. For phone QR testing, set both `NEXT_PUBLIC_*_BASE_URL` values to the computer's current Wi-Fi IP and include the web URL in `ALLOWED_ORIGINS`, then restart with `docker compose up --build`.
+
 ## API foundation
 
 - `GET /health`
