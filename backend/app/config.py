@@ -20,10 +20,17 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
     storage_bucket: str = "issue-images"
+    auth_required: bool = False
+    admin_emails: str = ""
+    max_upload_bytes: int = 10 * 1024 * 1024
 
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def allowed_admin_emails(self) -> set[str]:
+        return {email.strip().lower() for email in self.admin_emails.split(",") if email.strip()}
 
 
 @lru_cache

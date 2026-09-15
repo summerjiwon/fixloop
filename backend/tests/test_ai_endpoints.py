@@ -1,8 +1,11 @@
+import base64
+
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC")
 
 
 def test_health() -> None:
@@ -58,7 +61,7 @@ def test_report_to_resolution_flow_requires_explicit_verification_and_approval()
     analysis = client.post(
         "/api/reports/analyze",
         data={"location_id": "00000000-0000-0000-0000-000000000001", "reporter_text": "의자 파손"},
-        files={"image": ("before.jpg", b"fake-before-image", "image/jpeg")},
+        files={"image": ("before.png", PNG, "image/png")},
     )
     assert analysis.status_code == 201
 
@@ -72,7 +75,7 @@ def test_report_to_resolution_flow_requires_explicit_verification_and_approval()
 
     after = client.post(
         f"/api/issues/{issue_id}/after",
-        files={"image": ("after.jpg", b"fake-after-image", "image/jpeg")},
+        files={"image": ("after.png", PNG, "image/png")},
     )
     assert after.status_code == 200
     assert after.json()["status"] == "VERIFYING"
@@ -90,7 +93,7 @@ def test_qr_report_endpoint_automatically_creates_issue_after_analysis() -> None
     response = client.post(
         "/api/reports",
         data={"location_id": "00000000-0000-0000-0000-000000000001"},
-        files={"image": ("before.jpg", b"fake-before-image", "image/jpeg")},
+        files={"image": ("before.png", PNG, "image/png")},
     )
 
     assert response.status_code == 201

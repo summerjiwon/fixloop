@@ -45,9 +45,18 @@ export type Insights = {
 };
 
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const authRequired = process.env.NEXT_PUBLIC_AUTH_REQUIRED === "true";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, { cache: "no-store", ...init });
+async function request<T>(path: string, init?: RequestInit, admin = false): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (admin && authRequired) {
+    const { supabase } = await import("@/lib/supabase");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const token = sessionResult?.data.session?.access_token;
+    if (!token) throw new Error("관리자 로그인이 필요합니다.");
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${baseUrl}${path}`, { cache: "no-store", ...init, headers });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     throw new Error(payload?.detail ?? "요청을 처리하지 못했습니다.");
@@ -71,11 +80,11 @@ export async function submitReport(locationId: string, image: File, reporterText
   return request<Issue>("/api/reports", { method: "POST", body: form });
 }
 
-export const confirmReport = (draftId: string) => request<Issue>(`/api/reports/${draftId}/confirm`, { method: "POST" });
-export const listIssues = (status?: IssueStatus) => request<Issue[]>(`/api/issues${status ? `?status_filter=${status}` : ""}`);
-export const getIssue = (id: string) => request<Issue>(`/api/issues/${id}`);
-export const changeStatus = (id: string, status: IssueStatus) => request<Issue>(`/api/issues/${id}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-export const addAfterImage = (id: string, image: File) => { const form = new FormData(); form.set("image", image); return request<Issue>(`/api/issues/${id}/after`, { method: "POST", body: form }); };
-export const verifyIssue = (id: string) => request<Issue>(`/api/issues/${id}/verify`, { method: "POST" });
-export const resolveIssue = (id: string) => request<Issue>(`/api/issues/${id}/resolve`, { method: "POST" });
-export const getInsights = () => request<Insights>("/api/insights");
+export const confirmReport = (draftId: string) => request<Issue>(`/api/reports/${draftId}/confirm`, { method: "POST" }, true);
+export const listIssues = (status?: IssueStatus) => request<Issue[]>(`/api/issues${status ? `?status_filter=${status}` : ""}`, undefined, true);
+export const getIssue = (id: string) => request<Issue>(`/api/issues/${id}`, undefined, true);
+export const changeStatus = (id: string, status: IssueStatus) => request<Issue>(`/api/issues/${id}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }, true);
+export const addAfterImage = (id: string, image: File) => { const form = new FormData(); form.set("image", image); return request<Issue>(`/api/issues/${id}/after`, { method: "POST", body: form }, true); };
+export const verifyIssue = (id: string) => request<Issue>(`/api/issues/${id}/verify`, { method: "POST" }, true);
+export const resolveIssue = (id: string) => request<Issue>(`/api/issues/${id}/resolve`, { method: "POST" }, true);
+export const getInsights = () => request<Insights>("/api/insights", undefined, true);

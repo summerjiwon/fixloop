@@ -1,9 +1,12 @@
 from datetime import UTC, datetime
 from functools import lru_cache
+from io import BytesIO
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from PIL import Image, UnidentifiedImageError
 
 from app.config import get_settings
 from app.database.storage import MemoryStorage, SupabaseStorage, draft_before_path, issue_after_path
@@ -36,6 +39,9 @@ app.add_middleware(
 
 memory_store = InMemoryStore()
 memory_storage = MemoryStorage()
+bearer_scheme = HTTPBearer(auto_error=False)
+ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+IMAGE_MIME_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
 
 
 def vision_provider() -> VisionProvider:
@@ -43,6 +49,34 @@ def vision_provider() -> VisionProvider:
         return get_vision_provider()
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@lru_cache
+def get_supabase_auth_client():
+    settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise RuntimeError("Supabase server credentials are required for administrator authentication")
+    from supabase import create_client
+
+    return create_client(settings.supabase_url, settings.supabase_service_role_key)
+
+
+def require_admin(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> None:
+    """Protect operator-only routes while leaving the QR reporting route public."""
+    settings = get_settings()
+    if not settings.auth_required:
+        return
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="관리자 로그인이 필요합니다.")
+    if not settings.allowed_admin_emails:
+        raise HTTPException(status_code=503, detail="관리자 이메일이 설정되지 않았습니다.")
+    try:
+        user = get_supabase_auth_client().auth.get_user(credentials.credentials).user
+    except Exception as error:
+        raise HTTPException(status_code=401, detail="로그인 정보를 확인할 수 없습니다.") from error
+    email = (getattr(user, "email", None) or "").lower()
+    if email not in settings.allowed_admin_emails:
+        raise HTTPException(status_code=403, detail="관리자 권한이 없습니다.")
 
 
 @lru_cache
@@ -84,9 +118,28 @@ def get_storage() -> MemoryStorage | SupabaseStorage:
     )
 
 
-def require_image(file: UploadFile) -> None:
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=422, detail="Only image uploads are accepted")
+async def read_validated_image(file: UploadFile) -> tuple[bytes, str]:
+    """Accept only real JPEG, PNG, or WebP files within the configured size limit."""
+    settings = get_settings()
+    if file.content_type not in ALLOWED_IMAGE_MIME_TYPES:
+        raise HTTPException(status_code=422, detail="JPG, PNG 또는 WebP 사진만 올릴 수 있습니다.")
+    content = await file.read(settings.max_upload_bytes + 1)
+    if not content:
+        raise HTTPException(status_code=422, detail="빈 파일은 올릴 수 없습니다.")
+    if len(content) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail=f"사진 용량은 {settings.max_upload_bytes // (1024 * 1024)}MB 이하여야 합니다.")
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image.verify()
+        with Image.open(BytesIO(content)) as image:
+            if image.width * image.height > 40_000_000:
+                raise HTTPException(status_code=422, detail="사진 해상도가 너무 큽니다.")
+            actual_mime_type = IMAGE_MIME_TYPES.get(image.format or "")
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as error:
+        raise HTTPException(status_code=422, detail="정상적인 이미지 파일이 아닙니다.") from error
+    if not actual_mime_type or actual_mime_type != file.content_type:
+        raise HTTPException(status_code=422, detail="파일 형식과 이미지 내용이 일치하지 않습니다.")
+    return content, actual_mime_type
 
 
 def translate_domain_error(error: Exception) -> HTTPException:
@@ -114,7 +167,9 @@ async def get_local_image(image_id: str) -> Response:
 
 @app.post("/api/ai/triage", response_model=VisualTriageResult)
 async def triage(
-    request: TriageRequest, provider: VisionProvider = Depends(vision_provider)
+    request: TriageRequest,
+    provider: VisionProvider = Depends(vision_provider),
+    _: None = Depends(require_admin),
 ) -> VisualTriageResult:
     """Validate a provider's visual-triage output before it can reach a future issue flow."""
     return await provider.triage(request)
@@ -122,7 +177,9 @@ async def triage(
 
 @app.post("/api/ai/verify", response_model=ProofOfFixResult)
 async def verify(
-    request: VerifyRequest, provider: VisionProvider = Depends(vision_provider)
+    request: VerifyRequest,
+    provider: VisionProvider = Depends(vision_provider),
+    _: None = Depends(require_admin),
 ) -> ProofOfFixResult:
     """Return a photo-based estimate; issue resolution remains an admin-only Day 5+ action."""
     return await provider.verify(request)
@@ -138,12 +195,11 @@ async def analyze_report(
     provider: VisionProvider = Depends(vision_provider),
 ) -> ReportAnalysisResponse:
     """Stage a Before image and analysis until the reporter explicitly confirms the issue."""
-    require_image(image)
     draft_id = uuid4()
     try:
-        file_bytes = await image.read()
+        file_bytes, content_type = await read_validated_image(image)
         image_path = local_storage.upload(
-            draft_before_path(draft_id), image.filename or "before.jpg", image.content_type, file_bytes
+            draft_before_path(draft_id), image.filename or "before.jpg", content_type, file_bytes
         )
         analysis = await provider.triage(
             TriageRequest(
@@ -160,7 +216,9 @@ async def analyze_report(
 
 @app.post("/api/reports/{draft_id}/confirm", response_model=IssueDetail, status_code=status.HTTP_201_CREATED)
 async def confirm_report(
-    draft_id: UUID, local_store: InMemoryStore | SupabaseStore = Depends(get_store)
+    draft_id: UUID,
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
 ) -> IssueDetail:
     try:
         return local_store.confirm_draft(draft_id)
@@ -187,12 +245,17 @@ async def list_issues(
     status_filter: IssueStatus | None = None,
     severity: str | None = None,
     local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
 ) -> list[IssueListItem]:
     return local_store.list_issues(status_filter, severity)
 
 
 @app.get("/api/issues/{issue_id}", response_model=IssueDetail)
-async def get_issue(issue_id: UUID, local_store: InMemoryStore | SupabaseStore = Depends(get_store)) -> IssueDetail:
+async def get_issue(
+    issue_id: UUID,
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
+) -> IssueDetail:
     try:
         return local_store.get_issue(issue_id)
     except Exception as error:
@@ -204,6 +267,7 @@ async def update_issue_status(
     issue_id: UUID,
     request: StatusUpdateRequest,
     local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
 ) -> IssueDetail:
     try:
         return local_store.update_status(issue_id, request.status)
@@ -218,11 +282,10 @@ async def upload_after_image(
     local_store: InMemoryStore | SupabaseStore = Depends(get_store),
     local_storage: MemoryStorage | SupabaseStorage = Depends(get_storage),
 ) -> IssueDetail:
-    require_image(image)
     try:
-        file_bytes = await image.read()
+        file_bytes, content_type = await read_validated_image(image)
         image_url = local_storage.upload(
-            issue_after_path(issue_id), image.filename or "after.jpg", image.content_type, file_bytes
+            issue_after_path(issue_id), image.filename or "after.jpg", content_type, file_bytes
         )
         return local_store.add_after_image(issue_id, image_url)
     except (NotFoundError, ValueError) as error:
@@ -234,6 +297,7 @@ async def verify_issue(
     issue_id: UUID,
     local_store: InMemoryStore | SupabaseStore = Depends(get_store),
     provider: VisionProvider = Depends(vision_provider),
+    _: None = Depends(require_admin),
 ) -> IssueDetail:
     try:
         issue, before_url, after_url = local_store.get_before_after(issue_id)
@@ -251,7 +315,11 @@ async def verify_issue(
 
 
 @app.post("/api/issues/{issue_id}/resolve", response_model=IssueDetail)
-async def resolve_issue(issue_id: UUID, local_store: InMemoryStore | SupabaseStore = Depends(get_store)) -> IssueDetail:
+async def resolve_issue(
+    issue_id: UUID,
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
+) -> IssueDetail:
     """The only route allowed to put an issue into RESOLVED."""
     try:
         return local_store.resolve(issue_id)
@@ -260,5 +328,8 @@ async def resolve_issue(issue_id: UUID, local_store: InMemoryStore | SupabaseSto
 
 
 @app.get("/api/insights", response_model=InsightsResponse)
-async def get_insights(local_store: InMemoryStore | SupabaseStore = Depends(get_store)) -> InsightsResponse:
+async def get_insights(
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
+) -> InsightsResponse:
     return local_store.get_insights()
