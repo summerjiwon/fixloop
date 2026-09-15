@@ -66,6 +66,20 @@ async def enrich_similar_issues(issue: IssueDetail, local_store: InMemoryStore |
         return issue
 
 
+async def run_ai_analysis(provider: VisionProvider, request: TriageRequest) -> VisualTriageResult:
+    """Turn a temporary provider failure into a safe, CORS-compatible API response."""
+    try:
+        return await provider.triage(request)
+    except Exception as error:
+        # Gemini and other providers can temporarily reject requests while under
+        # load.  Do not leak SDK internals or let an unhandled 500 lose CORS
+        # headers, which browsers otherwise report only as "Failed to fetch".
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI 분석 서비스가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.",
+        ) from error
+
+
 @lru_cache
 def get_supabase_auth_client():
     settings = get_settings()
@@ -187,7 +201,7 @@ async def triage(
     _: None = Depends(require_admin),
 ) -> VisualTriageResult:
     """Validate a provider's visual-triage output before it can reach a future issue flow."""
-    return await provider.triage(request)
+    return await run_ai_analysis(provider, request)
 
 
 @app.post("/api/ai/verify", response_model=ProofOfFixResult)
@@ -216,12 +230,13 @@ async def analyze_report(
         image_path = local_storage.upload(
             draft_before_path(draft_id), image.filename or "before.jpg", content_type, file_bytes
         )
-        analysis = await provider.triage(
+        analysis = await run_ai_analysis(
+            provider,
             TriageRequest(
                 before_image_url=local_storage.signed_url(image_path),
                 location_context=f"location:{location_id}",
                 reporter_text=reporter_text,
-            )
+            ),
         )
         local_store.create_draft(location_id, image_path, reporter_text, analysis, draft_id)
     except (NotFoundError, ValueError) as error:

@@ -2,7 +2,7 @@ import base64
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, vision_provider
 
 client = TestClient(app)
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC")
@@ -55,6 +55,30 @@ def test_triage_rejects_invalid_image_url() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_temporary_ai_failure_returns_retryable_message() -> None:
+    class BusyProvider:
+        async def triage(self, request):  # noqa: ANN001
+            raise RuntimeError("provider is busy")
+
+        async def verify(self, request):  # noqa: ANN001
+            raise RuntimeError("provider is busy")
+
+    app.dependency_overrides[vision_provider] = lambda: BusyProvider()
+    try:
+        response = client.post(
+            "/api/ai/triage",
+            json={
+                "before_image_url": "https://example.com/images/before.jpg",
+                "location_context": "부평점 Zone B",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert "잠시 후 다시 시도" in response.json()["detail"]
 
 
 def test_report_to_resolution_flow_requires_explicit_verification_and_approval() -> None:
