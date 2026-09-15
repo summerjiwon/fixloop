@@ -9,6 +9,7 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini-embedding-001}
       DATA_BACKEND: ${DATA_BACKEND:-memory}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-memory}
       SUPABASE_URL: ${SUPABASE_URL:-}

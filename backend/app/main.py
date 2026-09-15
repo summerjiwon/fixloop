@@ -25,7 +25,7 @@ from app.schemas import (
     VisualTriageResult,
     VerifyRequest,
 )
-from app.services.ai import VisionProvider, get_vision_provider
+from app.services.ai import VisionProvider, get_issue_embedding_provider, get_vision_provider
 
 
 app = FastAPI(title="FixLoop API", version="0.1.0")
@@ -49,6 +49,21 @@ def vision_provider() -> VisionProvider:
         return get_vision_provider()
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+async def enrich_similar_issues(issue: IssueDetail, local_store: InMemoryStore | SupabaseStore) -> IssueDetail:
+    """Keep a successful report even when optional similarity enrichment is unavailable."""
+    if not isinstance(local_store, SupabaseStore):
+        return issue
+    provider = get_issue_embedding_provider()
+    if not provider:
+        return issue
+    issue_text = f"공간: {issue.area}\n설비: {issue.asset_name}\n분류: {issue.category}\n제목: {issue.title}\n설명: {issue.description}"
+    try:
+        local_store.save_embedding(issue.id, await provider.embed(issue_text))
+        return local_store.get_issue(issue.id)
+    except Exception:
+        return issue
 
 
 @lru_cache
@@ -221,7 +236,7 @@ async def confirm_report(
     _: None = Depends(require_admin),
 ) -> IssueDetail:
     try:
-        return local_store.confirm_draft(draft_id)
+        return await enrich_similar_issues(local_store.confirm_draft(draft_id), local_store)
     except Exception as error:
         raise translate_domain_error(error) from error
 

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5-mini"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.6-flash"
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "gemini-embedding-001"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     data_backend: str = "memory"
     storage_backend: str = "memory"

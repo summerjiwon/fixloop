@@ -1,4 +1,5 @@
 import asyncio
+import math
 from typing import Protocol
 
 import httpx
@@ -23,6 +24,10 @@ class VisionProvider(Protocol):
     async def triage(self, request: TriageRequest) -> VisualTriageResult: ...
 
     async def verify(self, request: VerifyRequest) -> ProofOfFixResult: ...
+
+
+class IssueEmbeddingProvider(Protocol):
+    async def embed(self, issue_text: str) -> list[float]: ...
 
 
 class MockVisionProvider:
@@ -152,6 +157,37 @@ class GeminiVisionProvider:
         )
         return schema.model_validate_json(response.text)
 
+
+class GeminiEmbeddingProvider:
+    """Generate normalized 1,536-dimension vectors for same-location issue matching."""
+
+    def __init__(self, api_key: str, model: str) -> None:
+        from google import genai
+        from google.genai import types
+
+        self.client = genai.Client(api_key=api_key)
+        self.types = types
+        self.model = model
+
+    async def embed(self, issue_text: str) -> list[float]:
+        return await asyncio.to_thread(self._embed_sync, issue_text)
+
+    def _embed_sync(self, issue_text: str) -> list[float]:
+        response = self.client.models.embed_content(
+            model=self.model,
+            contents=issue_text,
+            config=self.types.EmbedContentConfig(
+                task_type="SEMANTIC_SIMILARITY", output_dimensionality=1536
+            ),
+        )
+        values = list(response.embeddings[0].values)
+        if len(values) != 1536:
+            raise RuntimeError("Gemini embedding dimension must be 1536")
+        magnitude = math.sqrt(sum(value * value for value in values))
+        if not magnitude:
+            raise RuntimeError("Gemini returned an empty embedding")
+        return [value / magnitude for value in values]
+
 def get_vision_provider() -> VisionProvider:
     settings = get_settings()
     if settings.ai_provider == "mock":
@@ -167,3 +203,12 @@ def get_vision_provider() -> VisionProvider:
     raise RuntimeError(
         f"Unsupported AI_PROVIDER={settings.ai_provider!r}. Add its SDK adapter behind VisionProvider."
     )
+
+
+def get_issue_embedding_provider() -> IssueEmbeddingProvider | None:
+    settings = get_settings()
+    if settings.data_backend != "supabase":
+        return None
+    if settings.ai_provider == "gemini" and settings.gemini_api_key:
+        return GeminiEmbeddingProvider(settings.gemini_api_key, settings.embedding_model)
+    return None

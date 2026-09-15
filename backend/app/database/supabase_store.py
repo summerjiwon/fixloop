@@ -127,13 +127,15 @@ class SupabaseStore:
         ]
 
     def _similar(self, issue_id: UUID) -> list[SimilarIssue]:
-        rows = self._rows(
-            self.client.table("issue_matches").select("candidate_issue_id,similarity").eq("issue_id", str(issue_id)).execute()
-        )
+        try:
+            rows = self._rows(self.client.rpc("find_similar_issues_for_issue", {"p_issue_id": str(issue_id)}).execute())
+        except Exception:
+            # Existing projects keep operating until the versioned migration is applied.
+            return []
         candidates: list[SimilarIssue] = []
         for row in rows:
             candidate = self._row(
-                self.client.table("issues").select("id,title,severity,status").eq("id", row["candidate_issue_id"]).maybe_single().execute(),
+                self.client.table("issues").select("id,title,severity,status").eq("id", row["issue_id"]).maybe_single().execute(),
                 "Similar issue not found",
             )
             candidates.append(
@@ -143,6 +145,12 @@ class SupabaseStore:
                 )
             )
         return candidates
+
+    def save_embedding(self, issue_id: UUID, embedding: list[float]) -> None:
+        vector_text = "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
+        self.client.rpc(
+            "set_issue_embedding", {"p_issue_id": str(issue_id), "p_embedding": vector_text}
+        ).execute()
 
     def get_issue(self, issue_id: UUID) -> IssueDetail:
         issue = self._issue(

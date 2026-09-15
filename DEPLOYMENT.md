@@ -18,6 +18,7 @@ Create a Gemini API key in Google AI Studio. Add it only to the backend host's s
 AI_PROVIDER=gemini
 GEMINI_API_KEY=replace-with-a-server-secret
 GEMINI_MODEL=gemini-3.6-flash
+EMBEDDING_MODEL=gemini-embedding-001
 DATA_BACKEND=supabase
 STORAGE_BACKEND=supabase
 SUPABASE_URL=https://your-project.supabase.co
