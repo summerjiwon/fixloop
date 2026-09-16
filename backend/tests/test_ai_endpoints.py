@@ -138,6 +138,22 @@ def test_qr_report_endpoint_automatically_creates_issue_after_analysis() -> None
     assert response.json()["title"]
 
 
+def test_inspected_non_issue_is_closed_and_excluded_from_insights() -> None:
+    analysis = client.post(
+        "/api/reports/analyze",
+        data={"location_id": "00000000-0000-0000-0000-000000000001"},
+        files={"image": ("before.png", PNG, "image/png")},
+    )
+    issue = client.post(f"/api/reports/{analysis.json()['draft_id']}/confirm")
+    issue_id = issue.json()["id"]
+
+    closed = client.post(f"/api/issues/{issue_id}/no-issue")
+
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "NO_ISSUE"
+    assert client.patch(f"/api/issues/{issue_id}/status", json={"status": "IN_PROGRESS"}).status_code == 409
+
+
 def test_insights_use_api_aggregates() -> None:
     response = client.get("/api/insights")
 

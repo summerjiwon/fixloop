@@ -25,6 +25,14 @@ class InvalidStateError(Exception):
     pass
 
 
+ACTIVE_STATUSES = {"OPEN", "IN_PROGRESS", "VERIFYING"}
+STATUS_TRANSITIONS = {
+    "OPEN": {"IN_PROGRESS"},
+    "IN_PROGRESS": {"VERIFYING"},
+    "VERIFYING": {"IN_PROGRESS"},
+}
+
+
 @dataclass
 class ReportDraft:
     id: UUID
@@ -137,12 +145,25 @@ class InMemoryStore:
         )
 
     def update_status(self, issue_id: UUID, status: IssueStatus) -> IssueDetail:
-        if status == "RESOLVED":
-            raise InvalidStateError("Use the dedicated resolve endpoint for RESOLVED status")
+        if status in {"RESOLVED", "NO_ISSUE"}:
+            raise InvalidStateError("Use a dedicated final-decision endpoint for terminal statuses")
         issue = self.issues.get(issue_id)
         if not issue:
             raise NotFoundError("Issue not found")
+        if status not in STATUS_TRANSITIONS.get(issue.status, set()):
+            raise InvalidStateError("This status change does not match the issue workflow")
         self.issues[issue_id] = issue.model_copy(update={"status": status})
+        return self.get_issue(issue_id)
+
+    def mark_no_issue(self, issue_id: UUID) -> IssueDetail:
+        issue = self.issues.get(issue_id)
+        if not issue:
+            raise NotFoundError("Issue not found")
+        if issue.status not in ACTIVE_STATUSES:
+            raise InvalidStateError("A closed issue cannot be classified again")
+        self.issues[issue_id] = issue.model_copy(
+            update={"status": "NO_ISSUE", "resolved_at": datetime.now(UTC)}
+        )
         return self.get_issue(issue_id)
 
     def add_after_image(self, issue_id: UUID, image_url: str) -> IssueDetail:
@@ -152,7 +173,7 @@ class InMemoryStore:
         self.images.setdefault(issue_id, []).append(
             IssueImage(id=uuid4(), image_url=image_url, type="AFTER", created_at=datetime.now(UTC))
         )
-        if issue.status != "RESOLVED":
+        if issue.status in ACTIVE_STATUSES:
             self.issues[issue_id] = issue.model_copy(update={"status": "VERIFYING"})
         return self.get_issue(issue_id)
 
@@ -175,6 +196,8 @@ class InMemoryStore:
             raise NotFoundError("Issue not found")
         if issue_id not in self.verifications:
             raise InvalidStateError("Run Before/After verification before final approval")
+        if issue.status != "VERIFYING":
+            raise InvalidStateError("Move the issue to VERIFYING before final approval")
         self.issues[issue_id] = issue.model_copy(
             update={"status": "RESOLVED", "resolved_at": datetime.now(UTC)}
         )
@@ -182,7 +205,7 @@ class InMemoryStore:
 
     def get_insights(self) -> InsightsResponse:
         """SQL-equivalent deterministic aggregation for local mode; AI never calculates these numbers."""
-        issues = list(self.issues.values())
+        issues = [issue for issue in self.issues.values() if issue.status != "NO_ISSUE"]
         by_location: dict[str, int] = {}
         by_category: dict[str, int] = {}
         for issue in issues:

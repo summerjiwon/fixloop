@@ -36,7 +36,7 @@ create table if not exists public.issues (
   category text not null,
   asset_name text not null,
   severity text not null check (severity in ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
-  status text not null default 'OPEN' check (status in ('OPEN', 'IN_PROGRESS', 'VERIFYING', 'RESOLVED')),
+  status text not null default 'OPEN' check (status in ('OPEN', 'IN_PROGRESS', 'VERIFYING', 'RESOLVED', 'NO_ISSUE')),
   ai_confidence real not null check (ai_confidence between 0 and 1),
   operator_comment text not null default '관리자 확인 필요',
   embedding vector(1536),

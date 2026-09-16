@@ -326,6 +326,7 @@ async def upload_after_image(
     image: UploadFile = File(...),
     local_store: InMemoryStore | SupabaseStore = Depends(get_store),
     local_storage: MemoryStorage | SupabaseStorage = Depends(get_storage),
+    _: None = Depends(require_admin),
 ) -> IssueDetail:
     try:
         file_bytes, content_type = await read_validated_image(image)
@@ -368,6 +369,19 @@ async def resolve_issue(
     """The only route allowed to put an issue into RESOLVED."""
     try:
         return local_store.resolve(issue_id)
+    except Exception as error:
+        raise translate_domain_error(error) from error
+
+
+@app.post("/api/issues/{issue_id}/no-issue", response_model=IssueDetail)
+async def mark_no_issue(
+    issue_id: UUID,
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+    _: None = Depends(require_admin),
+) -> IssueDetail:
+    """Close an inspected report that is not an actual facility issue."""
+    try:
+        return local_store.mark_no_issue(issue_id)
     except Exception as error:
         raise translate_domain_error(error) from error
 

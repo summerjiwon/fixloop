@@ -1,5 +1,5 @@
 export type Severity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type IssueStatus = "OPEN" | "IN_PROGRESS" | "VERIFYING" | "RESOLVED";
+export type IssueStatus = "OPEN" | "IN_PROGRESS" | "VERIFYING" | "RESOLVED" | "NO_ISSUE";
 
 export type Analysis = {
   asset: string;
@@ -87,4 +87,5 @@ export const changeStatus = (id: string, status: IssueStatus) => request<Issue>(
 export const addAfterImage = (id: string, image: File) => { const form = new FormData(); form.set("image", image); return request<Issue>(`/api/issues/${id}/after`, { method: "POST", body: form }, true); };
 export const verifyIssue = (id: string) => request<Issue>(`/api/issues/${id}/verify`, { method: "POST" }, true);
 export const resolveIssue = (id: string) => request<Issue>(`/api/issues/${id}/resolve`, { method: "POST" }, true);
+export const markNoIssue = (id: string) => request<Issue>(`/api/issues/${id}/no-issue`, { method: "POST" }, true);
 export const getInsights = () => request<Insights>("/api/insights", undefined, true);

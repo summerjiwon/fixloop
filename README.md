@@ -37,7 +37,7 @@ Open `http://localhost:3000/dashboard`. The default is a no-cost mock/memory dem
 - `POST /api/reports/{draftId}/confirm`
 - `POST /api/reports` (QR/mobile flow: analyze and create an issue in one request)
 - `GET /api/issues`, `GET /api/issues/{id}`, `PATCH /api/issues/{id}/status`
-- `POST /api/issues/{id}/after`, `POST /api/issues/{id}/verify`, `POST /api/issues/{id}/resolve`
+- `POST /api/issues/{id}/after`, `POST /api/issues/{id}/verify`, `POST /api/issues/{id}/resolve`, `POST /api/issues/{id}/no-issue`
 
 The default `memory` backend makes the flow runnable without credentials. `supabase/schema.sql` defines the production PostgreSQL, private Storage, and pgvector layout. Apply it, then apply `supabase/migrations/202609150001_admin_security.sql` to enable RLS and prevent browser-side table access. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only on the backend. The browser receives only the Supabase publishable key for administrator login.
 
@@ -54,7 +54,8 @@ The default `memory` backend makes the flow runnable without credentials. `supab
 - A reporter uploads one Before photo and may add optional text without signing in. Only real JPG, PNG, and WebP files up to the configured limit are accepted.
 - Dashboard, issue, insight, and status-changing routes require a Supabase-authenticated email listed in `ADMIN_EMAILS` when `AUTH_REQUIRED=true`.
 - The QR/mobile report flow creates the issue after validated AI analysis and shows a “registered” confirmation to the reporter.
-- `RESOLVED` cannot be selected in the ordinary status API; a verification result must exist before the dedicated approval route permits it.
+- 상태 흐름은 `OPEN(접수됨) → IN_PROGRESS(조치 중) → VERIFYING(확인 중) → RESOLVED(해결됨)`입니다. 실제 시설 문제가 아니라고 현장 확인된 신고는 별도의 종결 상태 `NO_ISSUE(문제 없음)`으로 처리하며, 운영 인사이트 집계에서는 제외합니다.
+- `RESOLVED`와 `NO_ISSUE`는 일반 상태 변경으로 선택할 수 없습니다. 해결 완료에는 확인 결과가 필요하고, 문제 없음은 관리자의 현장 확인 결정을 거쳐야 합니다.
 - Similar-issue candidates are advisory only. The application never auto-merges issues.
 - Insights aggregate data deterministically. AI may later phrase recommendations but must not calculate or modify the numbers.
 

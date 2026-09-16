@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
-from app.database.store import InvalidStateError, NotFoundError, ReportDraft
+from app.database.store import ACTIVE_STATUSES, STATUS_TRANSITIONS, InvalidStateError, NotFoundError, ReportDraft
 from app.schemas import (
     InsightItem,
     InsightsResponse,
@@ -168,18 +168,30 @@ class SupabaseStore:
         )
 
     def update_status(self, issue_id: UUID, status: IssueStatus) -> IssueDetail:
-        if status == "RESOLVED":
-            raise InvalidStateError("Use the dedicated resolve endpoint for RESOLVED status")
-        self.get_issue(issue_id)
+        if status in {"RESOLVED", "NO_ISSUE"}:
+            raise InvalidStateError("Use a dedicated final-decision endpoint for terminal statuses")
+        issue = self.get_issue(issue_id)
+        if status not in STATUS_TRANSITIONS.get(issue.status, set()):
+            raise InvalidStateError("This status change does not match the issue workflow")
         self.client.table("issues").update({"status": status}).eq("id", str(issue_id)).execute()
         return self.get_issue(issue_id)
 
+    def mark_no_issue(self, issue_id: UUID) -> IssueDetail:
+        issue = self.get_issue(issue_id)
+        if issue.status not in ACTIVE_STATUSES:
+            raise InvalidStateError("A closed issue cannot be classified again")
+        self.client.table("issues").update(
+            {"status": "NO_ISSUE", "resolved_at": datetime.now(UTC).isoformat()}
+        ).eq("id", str(issue_id)).execute()
+        return self.get_issue(issue_id)
+
     def add_after_image(self, issue_id: UUID, image_url: str) -> IssueDetail:
-        self.get_issue(issue_id)
+        issue = self.get_issue(issue_id)
         self.client.table("issue_images").insert(
             {"issue_id": str(issue_id), "image_path": image_url, "type": "AFTER"}
         ).execute()
-        self.client.table("issues").update({"status": "VERIFYING"}).eq("id", str(issue_id)).execute()
+        if issue.status in ACTIVE_STATUSES:
+            self.client.table("issues").update({"status": "VERIFYING"}).eq("id", str(issue_id)).execute()
         return self.get_issue(issue_id)
 
     def get_before_after(self, issue_id: UUID) -> tuple[IssueDetail, str, str]:
@@ -191,26 +203,28 @@ class SupabaseStore:
         return detail, before, after
 
     def save_verification(self, issue_id: UUID, verification: IssueVerification) -> IssueDetail:
-        self.get_issue(issue_id)
+        issue = self.get_issue(issue_id)
         self.client.table("issue_verifications").upsert(
             {"issue_id": str(issue_id), **verification.model_dump(mode="json")}
         ).execute()
         return self.get_issue(issue_id)
 
     def resolve(self, issue_id: UUID) -> IssueDetail:
-        self.get_issue(issue_id)
+        issue = self.get_issue(issue_id)
         verification = self._rows(
             self.client.table("issue_verifications").select("issue_id").eq("issue_id", str(issue_id)).execute()
         )
         if not verification:
             raise InvalidStateError("Run Before/After verification before final approval")
+        if issue.status != "VERIFYING":
+            raise InvalidStateError("Move the issue to VERIFYING before final approval")
         self.client.table("issues").update(
             {"status": "RESOLVED", "resolved_at": datetime.now(UTC).isoformat()}
         ).eq("id", str(issue_id)).execute()
         return self.get_issue(issue_id)
 
     def get_insights(self) -> InsightsResponse:
-        issues = self.list_issues()
+        issues = [issue for issue in self.list_issues() if issue.status != "NO_ISSUE"]
         locations = {
             row["id"]: row["name"]
             for row in self._rows(self.client.table("locations").select("id,name").execute())
