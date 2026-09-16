@@ -122,12 +122,16 @@ class GeminiVisionProvider:
         self.model = model
 
     async def triage(self, request: TriageRequest) -> VisualTriageResult:
+        inline_images = None
+        if request._ai_image_bytes and request._ai_image_mime_type:
+            inline_images = [(request._ai_image_bytes, request._ai_image_mime_type)]
         return await asyncio.to_thread(
             self._generate,
             VisualTriageResult,
             f"{TRIAGE_POLICY}\n\n신고 위치 문맥: {request.location_context}\n"
             f"신고자 설명: {request.reporter_text or '없음'}",
             [str(request.before_image_url)],
+            inline_images,
         )
 
     async def verify(self, request: VerifyRequest) -> ProofOfFixResult:
@@ -140,14 +144,24 @@ class GeminiVisionProvider:
             [str(request.before_image_url), str(request.after_image_url)],
         )
 
-    def _generate(self, schema: type[VisualTriageResult] | type[ProofOfFixResult], prompt: str, image_urls: list[str]):
+    def _generate(
+        self,
+        schema: type[VisualTriageResult] | type[ProofOfFixResult],
+        prompt: str,
+        image_urls: list[str],
+        inline_images: list[tuple[bytes, str]] | None = None,
+    ):
         parts = [prompt]
-        with httpx.Client(timeout=30, follow_redirects=True) as http:
-            for image_url in image_urls:
-                response = http.get(image_url)
-                response.raise_for_status()
-                mime_type = response.headers.get("content-type", "image/jpeg").split(";", 1)[0]
-                parts.append(self.types.Part.from_bytes(data=response.content, mime_type=mime_type))
+        if inline_images:
+            for image_bytes, mime_type in inline_images:
+                parts.append(self.types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+        else:
+            with httpx.Client(timeout=30, follow_redirects=True) as http:
+                for image_url in image_urls:
+                    response = http.get(image_url)
+                    response.raise_for_status()
+                    mime_type = response.headers.get("content-type", "image/jpeg").split(";", 1)[0]
+                    parts.append(self.types.Part.from_bytes(data=response.content, mime_type=mime_type))
         response = self.client.models.generate_content(
             model=self.model,
             contents=parts,

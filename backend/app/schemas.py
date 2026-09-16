@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, PrivateAttr
 
 
 Severity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
@@ -39,6 +39,10 @@ class TriageRequest(BaseModel):
     before_image_url: HttpUrl
     location_context: str = Field(min_length=1, max_length=500)
     reporter_text: str | None = Field(default=None, max_length=1000)
+    # QR uploads keep this transient image in memory so Gemini does not need to
+    # download the same photo back from Storage before analysing it.
+    _ai_image_bytes: bytes | None = PrivateAttr(default=None)
+    _ai_image_mime_type: str | None = PrivateAttr(default=None)
 
 
 class VerifyRequest(BaseModel):

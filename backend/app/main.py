@@ -42,6 +42,7 @@ memory_storage = MemoryStorage()
 bearer_scheme = HTTPBearer(auto_error=False)
 ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 IMAGE_MIME_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
+MAX_AI_IMAGE_DIMENSION = 1600
 
 
 def vision_provider() -> VisionProvider:
@@ -171,6 +172,16 @@ async def read_validated_image(file: UploadFile) -> tuple[bytes, str]:
     return content, actual_mime_type
 
 
+def optimize_image_for_ai(content: bytes) -> tuple[bytes, str]:
+    """Make a compact AI-only copy while preserving the reporter's original upload."""
+    with Image.open(BytesIO(content)) as image:
+        image = image.convert("RGB")
+        image.thumbnail((MAX_AI_IMAGE_DIMENSION, MAX_AI_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
+        optimized = BytesIO()
+        image.save(optimized, format="JPEG", quality=82, optimize=True)
+    return optimized.getvalue(), "image/jpeg"
+
+
 def translate_domain_error(error: Exception) -> HTTPException:
     if isinstance(error, NotFoundError):
         return HTTPException(status_code=404, detail=str(error))
@@ -230,13 +241,17 @@ async def analyze_report(
         image_path = local_storage.upload(
             draft_before_path(draft_id), image.filename or "before.jpg", content_type, file_bytes
         )
+        ai_image_bytes, ai_image_mime_type = optimize_image_for_ai(file_bytes)
+        triage_request = TriageRequest(
+            before_image_url=local_storage.signed_url(image_path),
+            location_context=f"location:{location_id}",
+            reporter_text=reporter_text,
+        )
+        triage_request._ai_image_bytes = ai_image_bytes
+        triage_request._ai_image_mime_type = ai_image_mime_type
         analysis = await run_ai_analysis(
             provider,
-            TriageRequest(
-                before_image_url=local_storage.signed_url(image_path),
-                location_context=f"location:{location_id}",
-                reporter_text=reporter_text,
-            ),
+            triage_request,
         )
         local_store.create_draft(location_id, image_path, reporter_text, analysis, draft_id)
     except (NotFoundError, ValueError) as error:

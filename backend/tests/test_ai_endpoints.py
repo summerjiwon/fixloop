@@ -1,8 +1,10 @@
 import base64
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
-from app.main import app, vision_provider
+from app.main import MAX_AI_IMAGE_DIMENSION, app, optimize_image_for_ai, vision_provider
 
 client = TestClient(app)
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC")
@@ -79,6 +81,17 @@ def test_temporary_ai_failure_returns_retryable_message() -> None:
 
     assert response.status_code == 503
     assert "잠시 후 다시 시도" in response.json()["detail"]
+
+
+def test_ai_image_optimization_downscales_large_phone_photo() -> None:
+    source = BytesIO()
+    Image.new("RGB", (2600, 1900), color="white").save(source, format="JPEG", quality=95)
+
+    optimized, mime_type = optimize_image_for_ai(source.getvalue())
+
+    assert mime_type == "image/jpeg"
+    with Image.open(BytesIO(optimized)) as image:
+        assert max(image.size) == MAX_AI_IMAGE_DIMENSION
 
 
 def test_report_to_resolution_flow_requires_explicit_verification_and_approval() -> None:
