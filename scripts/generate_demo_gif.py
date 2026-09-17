@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "frontend" / "public" / "demo-assets" / "fixloop-flow.gif"
+OUT = ROOT / "frontend" / "public" / "demo-assets" / "gonggan-girok-flow.gif"
 PHOTO = ROOT / "frontend" / "public" / "demo-assets" / "sample-leaking-faucet.png"
 FONT = Path("C:/Windows/Fonts/malgun.ttf")
 BOLD_FONT = Path("C:/Windows/Fonts/malgunbd.ttf")
@@ -23,7 +23,7 @@ def frame(step: str, heading: str, detail: str, card_lines: list[tuple[str, str]
     image = Image.new("RGB", SIZE, "#f4f8f8")
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, 1080, 20), fill="#16736d")
-    draw.text((72, 72), "FixLoop", font=font(32, True), fill="#16736d")
+    draw.text((72, 72), "공간기록", font=font(32, True), fill="#16736d")
     draw.text((72, 122), step, font=font(24, True), fill="#4d8a85")
     draw.text((72, 175), heading, font=font(54, True), fill="#172424")
     draw.multiline_text((72, 252), detail, font=font(28), fill="#536565", spacing=12)
@@ -40,7 +40,7 @@ def frame(step: str, heading: str, detail: str, card_lines: list[tuple[str, str]
         y = card_top + 42 + index * 72
         draw.text((112, y), label, font=font(23), fill="#667979")
         draw.text((420, y), value, font=font(25, True), fill="#172424")
-    draw.text((72, 1270), "사진 신고 → AI 분류 → 조치·검증", font=font(24, True), fill="#16736d")
+    draw.text((72, 1270), "공간기록  |  사진 신고 → AI 분류 → 조치·검증", font=font(24, True), fill="#16736d")
     return image
 
 

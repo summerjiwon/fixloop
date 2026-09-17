@@ -28,8 +28,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-canvas lg:flex">
       <aside className="hidden w-60 shrink-0 flex-col bg-navy-950 px-5 py-7 text-white lg:flex">
         <Link href="/dashboard" className="flex items-center gap-2.5 text-lg font-bold">
-          <span className="grid size-7 place-items-center rounded-lg bg-brand-600 text-sm">F</span>
-          FixLoop
+          <img src="/brand-mark.png" alt="" className="size-7 object-contain" />
+          공간기록
         </Link>
         <p className="mt-4 text-[11px] font-semibold tracking-[0.12em] text-teal-100/80">CENTRAL CITY · 8개 지점</p>
         <nav className="mt-5 space-y-2">
@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 lg:hidden">
-          <Link href="/dashboard" className="flex items-center gap-2 text-lg font-bold"><span className="grid size-7 place-items-center rounded-lg bg-brand-600 text-sm text-white">F</span>FixLoop</Link>
+          <Link href="/dashboard" className="flex items-center gap-2 text-lg font-bold"><img src="/brand-mark.png" alt="" className="size-7 object-contain" />공간기록</Link>
           <nav className="flex gap-3 text-sm font-semibold"><Link href="/dashboard">이슈</Link><Link href="/insights">인사이트</Link></nav>
         </header>
         {children}

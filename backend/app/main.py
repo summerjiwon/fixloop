@@ -30,7 +30,7 @@ from app.schemas import (
 from app.services.ai import VisionProvider, get_issue_embedding_provider, get_vision_provider
 
 
-app = FastAPI(title="FixLoop API", version="0.1.0")
+app = FastAPI(title="공간기록 API", version="0.1.0")
 logger = logging.getLogger(__name__)
 app.add_middleware(
     CORSMiddleware,

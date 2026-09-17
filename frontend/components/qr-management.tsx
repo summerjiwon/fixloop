@@ -11,7 +11,8 @@ const defaultLocation = {
   description: "현장 이슈 접수용 QR",
 };
 
-const storageKey = "fixloop.qr-inventory.v1";
+const storageKey = "gonggan-girok.qr-inventory.v1";
+const legacyStorageKey = "fixloop.qr-inventory.v1";
 
 type QrRecord = {
   id: string;
@@ -43,7 +44,7 @@ export function QrManagement() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(storageKey);
+    const saved = window.localStorage.getItem(storageKey) ?? window.localStorage.getItem(legacyStorageKey);
       if (saved) {
         const parsed = JSON.parse(saved) as QrRecord[];
         if (Array.isArray(parsed)) {
@@ -106,7 +107,7 @@ export function QrManagement() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `fixloop-${selectedRecord.placement.replace(/[^a-zA-Z0-9가-힣]+/g, "-")}-qr.svg`;
+    link.download = `gonggan-girok-${selectedRecord.placement.replace(/[^a-zA-Z0-9가-힣]+/g, "-")}-qr.svg`;
     link.click();
     URL.revokeObjectURL(url);
     setNotice("QR SVG 파일을 다운로드했습니다.");

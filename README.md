@@ -1,6 +1,6 @@
-# FixLoop
+# 공간기록
 
-FixLoop is an AI-assisted remote operations MVP for multi-location spaces. A visitor reports a problem with a photo; the service structures the report, helps an operator find similar issues, compares Before/After photos, and leaves final resolution to an administrator.
+공간기록은 다지점 공간의 현장 이슈를 사진으로 접수하고, AI 분류·유사 이슈 탐색·조치 사진 검증을 통해 운영자가 해결까지 관리하도록 돕는 서비스입니다.
 
 ## Repository layout
 

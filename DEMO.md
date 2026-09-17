@@ -1,4 +1,4 @@
-# FixLoop 심사 데모 가이드 (75초)
+# 공간기록 심사 데모 가이드 (75초)
 
 공개 서비스: https://fixloop-psi.vercel.app
 

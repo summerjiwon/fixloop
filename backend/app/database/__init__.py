@@ -1,1 +1,1 @@
-"""Persistence and storage adapters for FixLoop."""
+"""Persistence and storage adapters for 공간기록."""

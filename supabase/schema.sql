@@ -1,4 +1,4 @@
--- FixLoop Day 2 schema. Run in the Supabase SQL editor before setting DATA_BACKEND=supabase.
+-- 공간기록 Day 2 schema. Run in the Supabase SQL editor before setting DATA_BACKEND=supabase.
 create extension if not exists vector;
 
 create table if not exists public.locations (

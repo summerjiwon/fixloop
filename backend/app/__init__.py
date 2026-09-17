@@ -1,1 +1,1 @@
-"""FixLoop backend application package."""
+"""공간기록 backend application package."""

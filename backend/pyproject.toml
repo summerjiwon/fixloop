@@ -1,7 +1,7 @@
 [project]
-name = "fixloop-api"
+name = "gonggan-girok-api"
 version = "0.1.0"
-description = "FastAPI service for FixLoop"
+description = "FastAPI service for 공간기록"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1.0",
