@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, HttpUrl, PrivateAttr
 
 
 Severity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-IssueStatus = Literal["OPEN", "IN_PROGRESS", "VERIFYING", "RESOLVED", "NO_ISSUE"]
+IssueStatus = Literal["ANALYZING", "ANALYSIS_FAILED", "OPEN", "IN_PROGRESS", "VERIFYING", "RESOLVED", "NO_ISSUE"]
 ImageType = Literal["BEFORE", "AFTER"]
 
 

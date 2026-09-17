@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 from functools import lru_cache
 from io import BytesIO
+import logging
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from PIL import Image, UnidentifiedImageError
@@ -29,6 +30,7 @@ from app.services.ai import VisionProvider, get_issue_embedding_provider, get_vi
 
 
 app = FastAPI(title="FixLoop API", version="0.1.0")
+logger = logging.getLogger(__name__)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
@@ -65,6 +67,37 @@ async def enrich_similar_issues(issue: IssueDetail, local_store: InMemoryStore |
         return local_store.get_issue(issue.id)
     except Exception:
         return issue
+
+
+async def complete_report_analysis(
+    issue_id: UUID,
+    location_id: UUID,
+    image_path: str,
+    reporter_text: str | None,
+    ai_image_bytes: bytes,
+    ai_image_mime_type: str,
+    local_store: InMemoryStore | SupabaseStore,
+    local_storage: MemoryStorage | SupabaseStorage,
+    provider: VisionProvider,
+) -> None:
+    """Run the slow, external work after the reporter has received an acknowledgement."""
+    try:
+        triage_request = TriageRequest(
+            before_image_url=local_storage.signed_url(image_path),
+            location_context=f"location:{location_id}",
+            reporter_text=reporter_text,
+        )
+        triage_request._ai_image_bytes = ai_image_bytes
+        triage_request._ai_image_mime_type = ai_image_mime_type
+        analysis = await run_ai_analysis(provider, triage_request)
+        issue = local_store.apply_analysis(issue_id, analysis)
+        await enrich_similar_issues(issue, local_store)
+    except Exception:
+        logger.exception("Asynchronous report analysis failed for issue %s", issue_id)
+        try:
+            local_store.mark_analysis_failed(issue_id)
+        except Exception:
+            logger.exception("Unable to mark issue %s as analysis failed", issue_id)
 
 
 async def run_ai_analysis(provider: VisionProvider, request: TriageRequest) -> VisualTriageResult:
@@ -273,6 +306,7 @@ async def confirm_report(
 
 @app.post("/api/reports", response_model=IssueDetail, status_code=status.HTTP_201_CREATED)
 async def submit_report(
+    background_tasks: BackgroundTasks,
     location_id: UUID = Form(...),
     reporter_text: str | None = Form(default=None),
     image: UploadFile = File(...),
@@ -280,9 +314,33 @@ async def submit_report(
     local_storage: MemoryStorage | SupabaseStorage = Depends(get_storage),
     provider: VisionProvider = Depends(vision_provider),
 ) -> IssueDetail:
-    """Public QR flow: analyze, validate, and create the issue in one reporter action."""
-    analysis = await analyze_report(location_id, reporter_text, image, local_store, local_storage, provider)
-    return await confirm_report(analysis.draft_id, local_store)
+    """Public QR flow: acknowledge a durable report before slow AI work begins."""
+    try:
+        file_bytes, content_type = await read_validated_image(image)
+        issue_id = uuid4()
+        image_path = local_storage.upload(
+            draft_before_path(issue_id),
+            image.filename or "before.jpg",
+            content_type,
+            file_bytes,
+        )
+        issue = local_store.create_pending_issue(location_id, image_path, reporter_text, issue_id)
+        ai_image_bytes, ai_image_mime_type = optimize_image_for_ai(file_bytes)
+        background_tasks.add_task(
+            complete_report_analysis,
+            issue.id,
+            location_id,
+            image_path,
+            reporter_text,
+            ai_image_bytes,
+            ai_image_mime_type,
+            local_store,
+            local_storage,
+            provider,
+        )
+        return issue
+    except (NotFoundError, ValueError) as error:
+        raise translate_domain_error(error) from error
 
 
 @app.get("/api/issues", response_model=list[IssueListItem])

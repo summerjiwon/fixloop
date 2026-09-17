@@ -74,6 +74,82 @@ class SupabaseStore:
         ).execute()
         return draft
 
+    def create_pending_issue(
+        self, location_id: UUID, before_image_path: str, reporter_text: str | None, issue_id: UUID | None = None
+    ) -> IssueDetail:
+        """Store a reporter submission immediately, before external AI calls run."""
+        self.assert_location(location_id)
+        issue_id = issue_id or uuid4()
+        self.client.table("issues").insert(
+            {
+                "id": str(issue_id),
+                "location_id": str(location_id),
+                "area": "분석 대기",
+                "title": "사진 분석 중",
+                "description": reporter_text or "AI가 현장 사진을 분석하고 있습니다.",
+                "category": "분석 대기",
+                "asset_name": "분석 중",
+                "severity": "LOW",
+                "status": "ANALYZING",
+                "ai_confidence": 0,
+                "operator_comment": "AI 분석이 완료되면 분류와 권장 조치가 자동으로 반영됩니다.",
+            }
+        ).execute()
+        self.client.table("issue_images").insert(
+            {"issue_id": str(issue_id), "image_path": before_image_path, "type": "BEFORE"}
+        ).execute()
+        # Avoid extra signed-URL, verification and similarity queries on the public QR path.
+        return IssueDetail(
+            id=issue_id,
+            location_id=location_id,
+            area="분석 대기",
+            title="사진 분석 중",
+            description=reporter_text or "AI가 현장 사진을 분석하고 있습니다.",
+            category="분석 대기",
+            asset_name="분석 중",
+            severity="LOW",
+            status="ANALYZING",
+            ai_confidence=0,
+            operator_comment="AI 분석이 완료되면 분류와 권장 조치가 자동으로 반영됩니다.",
+            created_at=datetime.now(UTC),
+            images=[],
+            similar_issues=[],
+        )
+
+    def apply_analysis(self, issue_id: UUID, analysis: VisualTriageResult) -> IssueDetail:
+        self._row(
+            self.client.table("issues").select("id").eq("id", str(issue_id)).maybe_single().execute(),
+            "Issue not found",
+        )
+        self.client.table("issues").update(
+            {
+                "area": analysis.area,
+                "title": analysis.title,
+                "description": analysis.description,
+                "category": analysis.issue_type,
+                "asset_name": analysis.asset,
+                "severity": analysis.severity,
+                "status": "OPEN",
+                "ai_confidence": analysis.confidence,
+                "operator_comment": analysis.operator_comment,
+            }
+        ).eq("id", str(issue_id)).execute()
+        return self.get_issue(issue_id)
+
+    def mark_analysis_failed(self, issue_id: UUID) -> IssueDetail:
+        self._row(
+            self.client.table("issues").select("id").eq("id", str(issue_id)).maybe_single().execute(),
+            "Issue not found",
+        )
+        self.client.table("issues").update(
+            {
+                "status": "ANALYSIS_FAILED",
+                "title": "AI 분석 지연",
+                "operator_comment": "AI 분석에 실패했습니다. 사진은 안전하게 접수되어 운영팀이 직접 확인할 수 있습니다.",
+            }
+        ).eq("id", str(issue_id)).execute()
+        return self.get_issue(issue_id)
+
     def confirm_draft(self, draft_id: UUID) -> IssueDetail:
         draft = self._row(
             self.client.table("report_drafts").select("*").eq("id", str(draft_id)).maybe_single().execute(),

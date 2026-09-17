@@ -126,7 +126,7 @@ def test_report_to_resolution_flow_requires_explicit_verification_and_approval()
     assert resolved.json()["status"] == "RESOLVED"
 
 
-def test_qr_report_endpoint_automatically_creates_issue_after_analysis() -> None:
+def test_qr_report_endpoint_acknowledges_before_background_analysis() -> None:
     response = client.post(
         "/api/reports",
         data={"location_id": "00000000-0000-0000-0000-000000000001"},
@@ -134,8 +134,8 @@ def test_qr_report_endpoint_automatically_creates_issue_after_analysis() -> None
     )
 
     assert response.status_code == 201
-    assert response.json()["status"] == "OPEN"
-    assert response.json()["title"]
+    assert response.json()["status"] == "ANALYZING"
+    assert response.json()["title"] == "사진 분석 중"
 
 
 def test_inspected_non_issue_is_closed_and_excluded_from_insights() -> None:

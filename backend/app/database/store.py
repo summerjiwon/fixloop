@@ -25,7 +25,7 @@ class InvalidStateError(Exception):
     pass
 
 
-ACTIVE_STATUSES = {"OPEN", "IN_PROGRESS", "VERIFYING"}
+ACTIVE_STATUSES = {"ANALYZING", "ANALYSIS_FAILED", "OPEN", "IN_PROGRESS", "VERIFYING"}
 STATUS_TRANSITIONS = {
     "OPEN": {"IN_PROGRESS"},
     "IN_PROGRESS": {"VERIFYING"},
@@ -71,6 +71,61 @@ class InMemoryStore:
         draft = ReportDraft(draft_id or uuid4(), location_id, before_image_url, reporter_text, analysis)
         self.drafts[draft.id] = draft
         return draft
+
+    def create_pending_issue(
+        self, location_id: UUID, before_image_url: str, reporter_text: str | None, issue_id: UUID | None = None
+    ) -> IssueDetail:
+        """Persist the reporter's submission before any external AI work begins."""
+        self.assert_location(location_id)
+        now = datetime.now(UTC)
+        issue_id = issue_id or uuid4()
+        issue = IssueListItem(
+            id=issue_id,
+            location_id=location_id,
+            area="분석 대기",
+            title="사진 분석 중",
+            description=reporter_text or "AI가 현장 사진을 분석하고 있습니다.",
+            category="분석 대기",
+            asset_name="분석 중",
+            severity="LOW",
+            status="ANALYZING",
+            ai_confidence=0,
+            operator_comment="AI 분석이 완료되면 분류와 권장 조치가 자동으로 반영됩니다.",
+            created_at=now,
+        )
+        self.issues[issue_id] = issue
+        self.images[issue_id] = [IssueImage(id=uuid4(), image_url=before_image_url, type="BEFORE", created_at=now)]
+        self.matches[issue_id] = []
+        return self.get_issue(issue_id)
+
+    def apply_analysis(self, issue_id: UUID, analysis: VisualTriageResult) -> IssueDetail:
+        issue = self.issues.get(issue_id)
+        if not issue:
+            raise NotFoundError("Issue not found")
+        self.issues[issue_id] = issue.model_copy(update={
+            "area": analysis.area,
+            "title": analysis.title,
+            "description": analysis.description,
+            "category": analysis.issue_type,
+            "asset_name": analysis.asset,
+            "severity": analysis.severity,
+            "status": "OPEN",
+            "ai_confidence": analysis.confidence,
+            "operator_comment": analysis.operator_comment,
+        })
+        self.matches[issue_id] = self._find_similar(self.issues[issue_id])
+        return self.get_issue(issue_id)
+
+    def mark_analysis_failed(self, issue_id: UUID) -> IssueDetail:
+        issue = self.issues.get(issue_id)
+        if not issue:
+            raise NotFoundError("Issue not found")
+        self.issues[issue_id] = issue.model_copy(update={
+            "status": "ANALYSIS_FAILED",
+            "title": "AI 분석 지연",
+            "operator_comment": "AI 분석에 실패했습니다. 사진은 안전하게 접수되어 운영팀이 직접 확인할 수 있습니다.",
+        })
+        return self.get_issue(issue_id)
 
     def confirm_draft(self, draft_id: UUID) -> IssueDetail:
         draft = self.drafts.pop(draft_id, None)

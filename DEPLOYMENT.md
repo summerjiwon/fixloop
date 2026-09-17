@@ -5,7 +5,7 @@ The application is intentionally runnable with `mock` AI and in-memory data. To 
 ## 1. Create Supabase data and private image storage
 
 1. Create a Supabase project.
-2. In its SQL editor, run `supabase/schema.sql`, then `supabase/seed.sql`, then `supabase/migrations/202609150001_admin_security.sql`.
+2. In its SQL editor, run `supabase/schema.sql`, then `supabase/seed.sql`, then every SQL file in `supabase/migrations/` in filename order. The latest migration adds the `ANALYZING` and `ANALYSIS_FAILED` states used for immediate QR-report acknowledgement.
 3. Keep the `issue-images` Storage bucket private. The backend uses the service-role key and generates temporary signed links for the dashboard and Gemini.
 4. Copy the project URL and **Secret Key** into the backend host's secret environment settings. The server key must never be used in a browser.
 5. In **Authentication → Users**, create the administrator email-and-password account. Put that same email in `ADMIN_EMAILS` on the backend host. Do not share the password.
