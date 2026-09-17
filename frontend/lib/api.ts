@@ -1,5 +1,5 @@
 export type Severity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type IssueStatus = "OPEN" | "IN_PROGRESS" | "VERIFYING" | "RESOLVED" | "NO_ISSUE";
+export type IssueStatus = "ANALYZING" | "ANALYSIS_FAILED" | "OPEN" | "IN_PROGRESS" | "VERIFYING" | "RESOLVED" | "NO_ISSUE";
 
 export type Analysis = {
   asset: string;
