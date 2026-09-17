@@ -104,6 +104,21 @@ class IssueDetail(IssueListItem):
     verification: IssueVerification | None = None
 
 
+class PublicReportStatus(BaseModel):
+    """Reporter-safe status: no private photos, text, notes, or similar-issue data."""
+
+    id: UUID
+    area: str
+    title: str
+    category: str
+    asset_name: str
+    severity: Severity
+    status: IssueStatus
+    ai_confidence: float = Field(ge=0, le=1)
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+
 class StatusUpdateRequest(BaseModel):
     status: IssueStatus
 

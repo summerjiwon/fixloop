@@ -44,6 +44,8 @@ export type Insights = {
   insights: { kind: string; title: string; detail: string; metric: string }[];
 };
 
+export type PublicReportStatus = Pick<Issue, "id" | "area" | "title" | "category" | "asset_name" | "severity" | "status" | "ai_confidence" | "created_at" | "resolved_at">;
+
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const authRequired = process.env.NEXT_PUBLIC_AUTH_REQUIRED === "true";
 
@@ -79,6 +81,7 @@ export async function submitReport(locationId: string, image: File, reporterText
   form.set("image", image);
   return request<Issue>("/api/reports", { method: "POST", body: form });
 }
+export const getPublicReportStatus = (id: string) => request<PublicReportStatus>(`/api/reports/${id}/status`);
 
 export const confirmReport = (draftId: string) => request<Issue>(`/api/reports/${draftId}/confirm`, { method: "POST" }, true);
 export const listIssues = (status?: IssueStatus) => request<Issue[]>(`/api/issues${status ? `?status_filter=${status}` : ""}`, undefined, true);

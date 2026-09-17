@@ -19,6 +19,7 @@ from app.schemas import (
     IssueListItem,
     IssueStatus,
     IssueVerification,
+    PublicReportStatus,
     ProofOfFixResult,
     ReportAnalysisResponse,
     StatusUpdateRequest,
@@ -340,6 +341,30 @@ async def submit_report(
         )
         return issue
     except (NotFoundError, ValueError) as error:
+        raise translate_domain_error(error) from error
+
+
+@app.get("/api/reports/{issue_id}/status", response_model=PublicReportStatus)
+async def get_public_report_status(
+    issue_id: UUID,
+    local_store: InMemoryStore | SupabaseStore = Depends(get_store),
+) -> PublicReportStatus:
+    """Let a reporter track only their opaque receipt ID, without exposing private evidence."""
+    try:
+        issue = local_store.get_issue(issue_id)
+        return PublicReportStatus(
+            id=issue.id,
+            area=issue.area,
+            title=issue.title,
+            category=issue.category,
+            asset_name=issue.asset_name,
+            severity=issue.severity,
+            status=issue.status,
+            ai_confidence=issue.ai_confidence,
+            created_at=issue.created_at,
+            resolved_at=issue.resolved_at,
+        )
+    except Exception as error:
         raise translate_domain_error(error) from error
 
 

@@ -138,6 +138,21 @@ def test_qr_report_endpoint_acknowledges_before_background_analysis() -> None:
     assert response.json()["title"] == "사진 분석 중"
 
 
+def test_reporter_can_check_safe_status_without_admin_access() -> None:
+    submitted = client.post(
+        "/api/reports",
+        data={"location_id": "00000000-0000-0000-0000-000000000001", "reporter_text": "비공개 설명"},
+        files={"image": ("before.png", PNG, "image/png")},
+    )
+
+    response = client.get(f"/api/reports/{submitted.json()['id']}/status")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == submitted.json()["id"]
+    assert "description" not in response.json()
+    assert "images" not in response.json()
+
+
 def test_inspected_non_issue_is_closed_and_excluded_from_insights() -> None:
     analysis = client.post(
         "/api/reports/analyze",
